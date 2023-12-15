@@ -1,0 +1,415 @@
+<script>
+  closestDate = '';
+dateFormatType = 'en-US';
+wkDates = [];
+options = {
+	weekday: 'short',
+	month: 'numeric',
+	day: 'numeric',
+	hour: 'numeric',
+	minute: 'numeric',
+	timeZoneName: 'short'
+};
+longOptions = {
+	weekday: 'long',
+	year: 'numeric',
+	month: 'long',
+	day: 'numeric',
+	hour: 'numeric',
+	minute: 'numeric',
+	timeZoneName: 'short'
+};
+wkDelay = parseInt(document.currentScript.dataset.delay, 10);
+wk_enable_captcha = false;
+wk_captcha_site_key = '';
+
+setTimeout(function() {
+	webinarKitForms = document.getElementsByClassName('webinarKitForm');
+	webinarID = webinarKitForms[0].name;
+	dateSelects = document.getElementsByClassName('webinarKitDate');
+	fullDates = document.getElementsByClassName('fullDate');
+
+	fetch('https://webinarkit.com/webinar/external/registration/' + webinarID)
+	.then(response => {
+		return response.json();
+	})
+	.then(data => {
+		if (data) {
+			setWebinarRegistrationFormData(data);
+		}
+	})
+	.catch(err => {
+		console.log(err);
+	});
+}, wkDelay);
+
+function setWebinarRegistrationFormData(data) {
+	let webinar = data.webinar;
+
+	webinarKitWebinar = data.webinar;
+
+	dateFormatType = webinar.schedule.dateFormatType;
+
+	webinarDates = webinar.schedule.webinarDates;
+
+	wk_enable_captcha = webinar.registration.enable_captcha;
+
+	wk_captcha_site_key = webinar.registration.captcha_site_key;
+
+	for (let i = 0; i < webinarDates.length; i++) {
+		wkDates = wkDates.concat(getPresentationDate(webinarDates[i]));
+	}
+
+	if (webinar.schedule.justInTime) {
+		let jit_date;
+
+		if (webinar.schedule.just_in_time_round_to === 'five_minutes') {
+			jit_date = round_to_nearest_minute(new Date(), 5);
+		} else if (webinar.schedule.just_in_time_round_to === 'ten_minutes') {
+			jit_date = round_to_nearest_minute(new Date(), 10);
+		} else {
+			jit_date = round_to_nearest_minute(new Date(), 15);
+		}
+
+		wkDates.push(new Date(jit_date));
+
+		for (let i = 0; i < webinar.schedule.justInTimeNumberOfSessions - 1; i++) {
+			jit_date.setMinutes(jit_date.getMinutes() + webinar.schedule.justInTimeSessionsTimeBetween);
+
+			wkDates.push(new Date(jit_date));
+		}
+	}
+
+	let registrationDates = wkDates;
+
+	let now = Date.now();
+
+	registrationDates.sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+
+	for (let j = 0; j < dateSelects.length; j++) {
+		for (let i = 0; i < registrationDates.length; i++) {
+			var registrationDate = new Date(registrationDates[i]);
+			var difference = registrationDate.getTime() - now;
+		
+			if (difference > 0) {
+				var option = document.createElement("option");
+		
+				option.value = registrationDates[i];
+				option.text = registrationDate.toLocaleDateString(dateFormatType, options);
+		
+				if (!closestDate) {
+					option.selected = true;
+		
+					setFullDate(option.value);
+		
+					closestDate = registrationDate;
+				}
+
+				dateSelects[j].add(option);
+			}
+		}
+	}
+
+	if (webinar.schedule.enableInstantWatch) {
+		for (let j = 0; j < dateSelects.length; j++) {
+			dateSelects[j].style.display = 'none';
+			dateSelects[j].parentElement.style.marginBottom = 0;
+		}
+	}
+}
+
+function setFullDate(date) {
+	for (let j = 0; j < dateSelects.length; j++) {
+		dateSelects[j].value = date;
+	}
+
+	for (let j = 0; j < fullDates.length; j++) {
+		fullDates[j].setAttribute('value', new Date(date).toLocaleDateString(dateFormatType, longOptions));
+	}
+}
+
+function round_to_nearest_minute(date, minutes) {
+	let ms = 1000 * 60 * minutes;
+	return new Date(Math.ceil(date.getTime() / ms) * ms);
+}
+
+function getPresentationDate(webinarDate) {
+	if (webinarDate.type === 'ongoing') {
+		let today = new Date();
+
+		let presentationDate;
+
+		if (webinarDate.day === 'Day') {
+			presentationDate = getConvertedDate(today, webinarDate.time, webinarDate.period, webinarDate.timeZone);
+
+			if (Date.now() - (1000 * 60 * 60 * 2) > presentationDate.getTime()) {
+				presentationDate.setDate(presentationDate.getDate() + 1);
+			}
+		} else {
+			let dow = 0;
+
+			if (webinarDate.day === 'Monday') {
+				dow = 1;
+			} else if (webinarDate.day === 'Tuesday') {
+				dow = 2;
+			} else if (webinarDate.day === 'Wednesday') {
+				dow = 3;
+			} else if (webinarDate.day === 'Thursday') {
+				dow = 4;
+			} else if (webinarDate.day === 'Friday') {
+				dow = 5;
+			} else if (webinarDate.day === 'Saturday') {
+				dow = 6;
+			} else if (webinarDate.day === 'Sunday') {
+				dow = 0;
+			}
+
+			let tempDate = new Date();
+
+			tempDate.setDate(today.getDate() + (dow + (7 - today.getDay())) % 7);
+
+			presentationDate = getConvertedDate(tempDate, webinarDate.time, webinarDate.period, webinarDate.timeZone);
+
+			if (Date.now() - (1000 * 60 * 60 * 2) > presentationDate.getTime()) {
+				presentationDate.setDate(presentationDate.getDate() + 7);
+			}
+		}
+
+		let presentationDates = [];
+
+		presentationDates.push(new Date(presentationDate));
+
+		if (webinarDate.numberOfSessions && webinarDate.numberOfSessions > 1) {
+			for (let i = 0; i < webinarDate.numberOfSessions - 1; i++) {
+				presentationDate.setDate(presentationDate.getDate() + (webinarDate.day === 'Day' ? 1 : 7));
+
+				presentationDates.push(new Date(presentationDate));
+			}
+		}
+
+		return presentationDates;
+	} else {
+		return getConvertedDate(new Date(webinarDate.day.replace(/-/g, "/") + ' 00:00'), webinarDate.time, webinarDate.period, webinarDate.timeZone);
+	}
+}
+
+function getFullDate(specificDate, specificTime, specificPeriod, timeZone) {
+	let [hours, minutes] = specificTime.split(':');
+
+	if (hours === '12') {
+		hours = '00';
+	}
+
+	if (specificPeriod === 'PM') {
+		hours = parseInt(hours, 10) + 12;
+	}
+
+	let dateString = (specificDate.getMonth() + 1) + ' ' + specificDate.getDate() + ' ' + specificDate.getFullYear() + ' ' + hours + ':' + minutes + ':00' + ' ' + timeZone;
+
+	return new Date(Date.parse(dateString));
+}
+
+function getConvertedDate(specificDate, specificTime, specificPeriod, timeZone) {
+	let [hours, minutes] = specificTime.split(':');
+
+	if (hours === '12') {
+		hours = '00';
+	}
+
+	if (specificPeriod === 'PM') {
+		hours = parseInt(hours, 10) + 12;
+	}
+
+	specificDate.setHours(hours);
+	specificDate.setMinutes(minutes);
+	specificDate.setSeconds(0);
+	specificDate.setMilliseconds(0);
+
+	return convertDateToTimeZone(specificDate, timeZone);
+}
+
+function convertDateToTimeZone(date, timeZone) {
+	var temporaryDate = new Date(date.toLocaleString('en-US', {
+		timeZone: timeZone
+	}));
+
+	var difference = date.getTime() - temporaryDate.getTime();
+
+	return new Date(date.getTime() + difference);
+}
+
+function onWebinarKitFirstNameChange(value) {
+	let webinarKitFirstNames = document.getElementsByClassName('webinarKitFirstName');
+
+	for (let j = 0; j < webinarKitFirstNames.length; j++) {
+		webinarKitFirstNames[j].value = value;
+	}
+}
+
+function onWebinarKitLastNameChange(value) {
+	let webinarKitLastNames = document.getElementsByClassName('webinarKitLastName');
+
+	for (let j = 0; j < webinarKitLastNames.length; j++) {
+		webinarKitLastNames[j].value = value;
+	}
+}
+
+function onWebinarKitEmailChange(value) {
+	let webinarKitEmails = document.getElementsByClassName('webinarKitEmail');
+
+	for (let j = 0; j < webinarKitEmails.length; j++) {
+		webinarKitEmails[j].value = value;
+	}
+}
+
+function onWebinarKitPhoneNumberCountryCodeChange(value) {
+	let webinarKitPhoneNumberCountryCodes = document.getElementsByClassName('webinarKitPhoneNumberCountryCode');
+
+	for (let j = 0; j < webinarKitPhoneNumberCountryCodes.length; j++) {
+		webinarKitPhoneNumberCountryCodes[j].value = value;
+	}
+}
+
+function onWebinarKitPhoneNumberChange(value) {
+	let webinarKitPhoneNumbers = document.getElementsByClassName('webinarKitPhoneNumber');
+
+	for (let j = 0; j < webinarKitPhoneNumbers.length; j++) {
+		webinarKitPhoneNumbers[j].value = value;
+	}
+}
+
+function onWebinarKitCustomField1Change(value) {
+	let webinarKitCustomField1s = document.getElementsByClassName('webinarKitCustomField1');
+
+	for (let j = 0; j < webinarKitCustomField1s.length; j++) {
+		webinarKitCustomField1s[j].value = value;
+	}
+}
+
+function onWebinarKitCustomField2Change(value) {
+	let webinarKitCustomField2s = document.getElementsByClassName('webinarKitCustomField2');
+
+	for (let j = 0; j < webinarKitCustomField2s.length; j++) {
+		webinarKitCustomField2s[j].value = value;
+	}
+}
+
+function onWebinarKitCustomField3Change(value) {
+	let webinarKitCustomField3s = document.getElementsByClassName('webinarKitCustomField3');
+
+	for (let j = 0; j < webinarKitCustomField3s.length; j++) {
+		webinarKitCustomField3s[j].value = value;
+	}
+}
+
+function onWebinarKitCustomField4Change(value) {
+	let webinarKitCustomField4s = document.getElementsByClassName('webinarKitCustomField4');
+
+	for (let j = 0; j < webinarKitCustomField4s.length; j++) {
+		webinarKitCustomField4s[j].value = value;
+	}
+}
+
+function onWebinarKitCustomField5Change(value) {
+	let webinarKitCustomField5s = document.getElementsByClassName('webinarKitCustomField5');
+
+	for (let j = 0; j < webinarKitCustomField5s.length; j++) {
+		webinarKitCustomField5s[j].value = value;
+	}
+}
+
+function onWebinarKitButtonClick(event) {
+	event.preventDefault();
+
+	let webinarKitForm = event.target.closest('.webinarKitForm');
+
+	if (!webinarKitForm.checkValidity()) {
+		return webinarKitForm.reportValidity();
+	}
+
+	let webinarKitDate = webinarKitForm.querySelector('.webinarKitDate');
+
+	let webinarKitFullDate = webinarKitForm.querySelector('.fullDate');
+
+	let webinarKitFirstName = webinarKitForm.querySelector('.webinarKitFirstName');
+
+	let webinarKitLastName = webinarKitForm.querySelector('.webinarKitLastName');
+
+	let webinarKitEmail = webinarKitForm.querySelector('.webinarKitEmail');
+
+	let webinarKitPhoneNumberCountryCode = webinarKitForm.querySelector('.webinarKitPhoneNumberCountryCode');
+
+	let webinarKitPhoneNumber = webinarKitForm.querySelector('.webinarKitPhoneNumber');
+
+	let webinarKitCustomField1 = webinarKitForm.querySelector('.webinarKitCustomField1');
+
+	let webinarKitCustomField2 = webinarKitForm.querySelector('.webinarKitCustomField2');
+
+	let webinarKitCustomField3 = webinarKitForm.querySelector('.webinarKitCustomField3');
+
+	let webinarKitCustomField4 = webinarKitForm.querySelector('.webinarKitCustomField4');
+
+	let webinarKitCustomField5 = webinarKitForm.querySelector('.webinarKitCustomField5');
+
+	if (webinarKitWebinar.schedule.enableInstantWatch) {
+		let now = new Date();
+		let option = document.createElement("option");
+		option.value = now.toISOString();
+		option.text = now.toLocaleDateString(dateFormatType, options);
+		option.selected = true;
+		webinarKitDate.add(option);
+		setFullDate(option.value);
+	}
+
+	let body = {
+		firstName: webinarKitFirstName ? webinarKitFirstName.value : '',
+		lastName: webinarKitLastName ? webinarKitLastName.value : '',
+		email: webinarKitEmail ? webinarKitEmail.value : '',
+		phoneNumberCountryCode: webinarKitPhoneNumberCountryCode ? webinarKitPhoneNumberCountryCode.value : '',
+		phoneNumber: webinarKitPhoneNumber ? webinarKitPhoneNumber.value : '',
+		customField1: webinarKitCustomField1 ? webinarKitCustomField1.value : '',
+		customField2: webinarKitCustomField2 ? webinarKitCustomField2.value : '',
+		customField3: webinarKitCustomField3 ? webinarKitCustomField3.value : '',
+		customField4: webinarKitCustomField4 ? webinarKitCustomField4.value : '',
+		customField5: webinarKitCustomField5 ? webinarKitCustomField5.value : '',
+		date: webinarKitDate.value,
+		fullDate: webinarKitFullDate.value
+	};
+
+	if (wk_enable_captcha) {
+		grecaptcha.ready(function() {
+			grecaptcha.execute(wk_captcha_site_key, { action: 'submit' }).then(function(token) {
+				body.recaptcha_token = token;
+				webinarkit_post_registration(webinarID, body);
+			});
+		});
+	} else {
+		webinarkit_post_registration(webinarID, body);
+	}
+}
+
+function webinarkit_post_registration(id, body) {
+	fetch('https://webinarkit.com/webinar/external/registration/' + id, {
+		method: 'POST',
+		headers: {
+			'Accept': 'application/json',
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify(body)
+	})
+	.then(response => {
+		return response.json();
+	})
+	.then(data => {
+		if (data) {
+          
+      data.url += "&param1=value1&param2=value2"
+          
+			window.top.location.href = data.url;
+		}
+	})
+	.catch(err => {
+		console.log(err);
+	});
+}
+</script>
