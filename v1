@@ -1,4 +1,3 @@
-<script>
   closestDate = '';
 dateFormatType = 'en-US';
 wkDates = [];
@@ -412,4 +411,3 @@ function webinarkit_post_registration(id, body) {
 		console.log(err);
 	});
 }
-</script>
