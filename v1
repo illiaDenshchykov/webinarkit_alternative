@@ -402,7 +402,7 @@ function webinarkit_post_registration(id, body) {
 	.then(data => {
 		if (data) {
           
-			window.top.location.href = data.url + '?param1=value1&param2=value2';
+			window.top.location.href = data.url + '&param1=value1&param2=value2';
 		}
 	})
 	.catch(err => {
